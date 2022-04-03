@@ -1,5 +1,6 @@
 using Zygote, Test
 using Zygote: pullback, @adjoint
+using IRTools
 
 macro test_inferred(ex)
   :(let res = nothing
@@ -30,11 +31,11 @@ y, back = pullback(badly, 2)
 @test_throws Exception back(1)
 bt = try back(1) catch e stacktrace(catch_backtrace()) end
 
-@test trace_contains(bt, nothing, "compiler.jl", 20)
+@test trace_contains(bt, nothing, "compiler.jl", 21)
 if VERSION >= v"1.6-"
-  @test_broken trace_contains(bt, :badly, "compiler.jl", 24)
+  @test_broken trace_contains(bt, :badly, "compiler.jl", 25)
 else
-  @test trace_contains(bt, :badly, "compiler.jl", 24)
+  @test trace_contains(bt, :badly, "compiler.jl", 25)
 end
 
 # Type inference checks
@@ -58,10 +59,9 @@ y, back = @test_inferred pullback(f, 5)
 y, back = @test_inferred pullback(Core._apply, +, (1, 2, 3))
 @test_inferred back(1)
 
-# TODO fix bcast inference
-# bcast(x) = x .* 5
-# y, back = @test_inferred pullback(bcast, [1,2,3])
-# @test_inferred back([1,1,1])
+bcast(x) = x .* 5
+y, back = @test_inferred pullback(bcast, [1,2,3])
+@test_inferred back([1,1,1])
 
 foo = let a = 4
   x -> x*a
@@ -89,6 +89,43 @@ str_repr = String(take!(buf))
 struct Funky
     x
     y
+end
+
+@testset "stack elision" begin
+  function stackfree(T)
+    _, forw = Zygote._generate_pullback_via_decomposition(T)
+    for b in IRTools.blocks(forw)
+      bb = IRTools.BasicBlock(b)
+      for stmt in bb.stmts
+        expr = stmt.expr
+        expr.head == :call && expr.args[1:2] == [Zygote, :_push!] && return false
+      end
+    end
+    return true
+  end
+
+  function knockoff_pow(x, n)
+    n == 0 && return 1
+    n == 1 && return x
+    n == 2 && return x * x
+    n == 3 && return x * x * x
+    return x ^ n
+  end
+
+  function roundabout_trig(x, fancy_sin, fancy_cos, fancy_tan)
+    if fancy_tan
+      s = fancy_sin ? inv(csc(x)) : sin(x)
+      c = fancy_cos ? inv(sec(x)) : cos(x)
+      s += 0
+      c *= 1
+      return s / c
+    else
+      return tan(x)
+    end
+  end
+
+  @test stackfree(Tuple{typeof(knockoff_pow), Int, Int})
+  @test stackfree(Tuple{typeof(roundabout_trig), Float64, Bool, Bool, Bool})
 end
 
 @testset "issue #851" begin

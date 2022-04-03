@@ -69,6 +69,9 @@ function accum_global(cx::Context, ref, x̄)
   return
 end
 
+# Needed for nested AD
+@nograd accum_global
+
 unwrap(x) = x
 
 @adjoint unwrap(x) = unwrap(x), x̄ -> (accum_param(__context__, x, x̄),)
