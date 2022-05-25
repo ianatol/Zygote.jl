@@ -70,10 +70,20 @@ function dual(ir)
   return ir
 end
 
-@dynamo function _pushforward(_, x...)
-  ir = IR(x...)
-  ir === nothing && return :(error("non-differentiable function $(args[2])"))
-  ir = Zygote.instrument(ir)
-  ir.meta.code.inlineable = true
-  return dual(ir)
+@static if isdefined(Core.Compiler, :set_inlineable!) # https://github.com/JuliaLang/julia/pull/45378
+  @dynamo function _pushforward(_, x...)
+    ir = IR(x...)
+    ir === nothing && return :(error("non-differentiable function $(args[2])"))
+    ir = Zygote.instrument(ir)
+    Core.Compiler.set_inlineable!(ir.meta.code, true)
+    return dual(ir)
+  end
+else
+  @dynamo function _pushforward(_, x...)
+    ir = IR(x...)
+    ir === nothing && return :(error("non-differentiable function $(args[2])"))
+    ir = Zygote.instrument(ir)
+    ir.meta.code.inlineable = true
+    return dual(ir)
+  end
 end

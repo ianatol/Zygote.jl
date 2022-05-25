@@ -65,7 +65,11 @@ end
             ci.code, Any[_pullback, Core.SlotNumber(2), literal_getfield],
             _sig, sparams, 0, 0, :propagate,
         )
-        ci.inlineable = true
+        @static if isdefined(Core.Compiler, :set_inlineable!)
+            Core.Compiler.set_inlineable!(ci, true)
+        else
+            ci.inlineable = true
+        end
 
         # backedge for `_pullback`, see https://docs.julialang.org/en/v1/devdocs/ast/#MethodInstance
         # this will cause a backedge to this particular MethodInstance to be attached to
